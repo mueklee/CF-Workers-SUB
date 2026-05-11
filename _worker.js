@@ -302,6 +302,9 @@ async function MD5MD5(text) {
 }
 
 function clashFix(content) {
+	// 在这里添加这一行：强制修正指纹参数名，适配新版 Mihomo 核心
+	content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
+
 	if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
 		let lines;
 		if (content.includes('\r\n')) {
@@ -320,7 +323,6 @@ function clashFix(content) {
 				result += line + '\n';
 			}
 		}
-
 		content = result;
 	}
 	return content;
