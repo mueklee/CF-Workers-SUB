@@ -302,6 +302,9 @@ async function MD5MD5(text) {
 }
 
 function clashFix(content) {
+	// 关键修改：强行将老的 fingerprint 映射为新版核心认可的 client-fingerprint
+	content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
+
 	if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
 		let lines;
 		if (content.includes('\r\n')) {
@@ -320,7 +323,6 @@ function clashFix(content) {
 				result += line + '\n';
 			}
 		}
-
 		content = result;
 	}
 	return content;
