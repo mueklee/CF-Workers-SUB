@@ -302,30 +302,50 @@ async function MD5MD5(text) {
 }
 
 function clashFix(content) {
-	// 在这里添加这一行：强制修正指纹参数名，适配新版 Mihomo 核心
-	content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
+    // 1. 修正 AnyTLS 指纹名 (之前的修复)
+    content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
 
-	if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
-		let lines;
-		if (content.includes('\r\n')) {
-			lines = content.split('\r\n');
-		} else {
-			lines = content.split('\n');
-		}
+    // 2. 修正 SS + v2ray-plugin 为 Mihomo 原生 WS 格式
+    // 这种修改会将原本不通的插件模式转换为核心原生模式，稳定性更高
+    if (content.includes('plugin: v2ray-plugin')) {
+        let lines = content.includes('\r\n') ? content.split('\r\n') : content.split('\n');
+        let result = "";
+        
+        for (let line of lines) {
+            if (line.includes('type: ss') && line.includes('v2ray-plugin')) {
+                // 提取关键参数
+                const hostMatch = line.match(/host:\s*([^,}\s]+)/);
+                const pathMatch = line.match(/path:\s*"([^"]+)"/);
+                const passwordMatch = line.match(/password:\s*([^,}\s]+)/);
+                const serverMatch = line.match(/server:\s*([^,}\s]+)/);
+                const portMatch = line.match(/port:\s*([^,}\s]+)/);
+                const nameMatch = line.match(/name:\s*([^,}\s]+)/);
 
-		let result = "";
-		for (let line of lines) {
-			if (line.includes('type: wireguard')) {
-				const 备改内容 = `, mtu: 1280, udp: true`;
-				const 正确内容 = `, mtu: 1280, remote-dns-resolve: true, udp: true`;
-				result += line.replace(new RegExp(备改内容, 'g'), 正确内容) + '\n';
-			} else {
-				result += line + '\n';
-			}
-		}
-		content = result;
-	}
-	return content;
+                if (hostMatch && pathMatch) {
+                    const host = hostMatch[1];
+                    // 处理路径中的转义符 \\= 恢复为 =
+                    const path = pathMatch[1].replace(/\\\\=/g, '=');
+                    const password = passwordMatch ? passwordMatch[1] : "";
+                    const server = serverMatch ? serverMatch[1] : "";
+                    const port = portMatch ? portMatch[1] : "";
+                    const name = nameMatch ? nameMatch[1] : "SS-Fixed";
+
+                    // 重构为 Mihomo 原生传输格式，取消 mux 以提高 CF 稳定性
+                    result += `  - {name: ${name}, server: ${server}, port: ${port}, type: ss, cipher: 2042-ietf-poly1305, password: ${password}, udp: true, tls: true, sni: ${host}, skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}}} \n`;
+                    continue;
+                }
+            }
+            result += line + '\n';
+        }
+        content = result;
+    }
+
+    // 3. 原有的 Wireguard 修复逻辑
+    if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
+        content = content.replace(/type: wireguard, mtu: 1280, udp: true/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
+    }
+
+    return content;
 }
 
 async function proxyURL(proxyURL, url) {
