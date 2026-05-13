@@ -182,10 +182,10 @@ export default {
 };
 
 function clashFix(content) {
-    // 1. AnyTLS 参数修正
+    // 1. AnyTLS 指纹名修正
     content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
 
-    // 2. SS + v2ray-plugin 转换为 Mihomo 原生格式 (针对你的自建节点进行终极适配)
+    // 2. SS + v2ray-plugin 转换为 Mihomo 原生 WS 格式 (针对自建 CF 节点的深度适配)
     if (content.includes('plugin: v2ray-plugin')) {
         let lines = content.includes('\r\n') ? content.split('\r\n') : content.split('\n');
         let result = "";
@@ -208,7 +208,9 @@ function clashFix(content) {
                         const port = portMatch ? portMatch[1] : "";
                         const name = nameMatch ? nameMatch[1].replace(/['"]/g, "") : "SS-Fixed";
 
-                        // 最终修正：cipher 改回 none 以匹配 V2RayN，加入 client-fingerprint: chrome
+                        // 关键修改：
+                        // 1. cipher 改回 none (Mihomo 核心支持)
+                        // 2. 强制加入 client-fingerprint: chrome 模拟浏览器特征
                         result += `  - {name: "${name}", server: ${server}, port: ${port}, type: ss, cipher: none, password: ${password}, udp: true, tls: true, sni: ${host}, client-fingerprint: chrome, skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}}} \n`;
                         continue; 
                     }
@@ -219,6 +221,11 @@ function clashFix(content) {
         content = result;
     }
 
+    // 3. Wireguard 修复逻辑
+    content = content.replace(/type: wireguard, mtu: 1280, udp: true/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
+    
+    return content;
+}
     // 3. Wireguard 修复
     content = content.replace(/type: wireguard, mtu: 1280, udp: true/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
     
