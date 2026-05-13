@@ -1,5 +1,4 @@
-// 部署完成后在网址后面加上这个，获取自建节点和机场聚合节点，/?token=auto或/auto或
-
+// 基础变量设置
 let mytoken = 'auto';
 let guestToken = ''; 
 let BotToken = ''; 
@@ -7,8 +6,8 @@ let ChatID = '';
 let TG = 0; 
 let FileName = 'CF-Workers-SUB';
 let SUBUpdateTime = 6; 
-let total = 99;//TB
-let timestamp = 4102329600000;//2099-12-31
+let total = 99;
+let timestamp = 4102329600000;
 
 let MainData = `https://cfxr.eu.org/getSub`;
 let urls = [];
@@ -119,14 +118,8 @@ export default {
 				}
 			}
 
-			if (env.WARP) 订阅转换URL += "|" + (await ADD(env.WARP)).join("|");
-			const utf8Encoder = new TextEncoder();
-			const encodedData = utf8Encoder.encode(req_data);
-			const utf8Decoder = new TextDecoder();
-			const text = utf8Decoder.decode(encodedData);
-
-			const uniqueLines = new Set(text.split('\n'));
-			const result = [...uniqueLines].join('\n');
+			const text = new TextDecoder().decode(new TextEncoder().encode(req_data));
+			const result = [...new Set(text.split('\n'))].join('\n');
 
 			let base64Data;
 			try {
@@ -161,7 +154,6 @@ export default {
 				return new Response(base64Data, { headers: responseHeaders });
 			} else {
                 let target = 订阅格式;
-                if (target === 'clash') target = 'clash';
 				subConverterUrl = `${subProtocol}://${subConverter}/sub?target=${target}&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
                 if (target === 'surge') subConverterUrl += '&ver=4';
                 if (target === 'quanx') subConverterUrl += '&udp=true';
@@ -182,10 +174,10 @@ export default {
 };
 
 function clashFix(content) {
-    // 1. AnyTLS 指纹名修正
+    // 1. AnyTLS 指纹修正：将 fingerprint 替换为 client-fingerprint 以适配 Mihomo 核心
     content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
 
-    // 2. SS + v2ray-plugin 转换为 Mihomo 原生 WS 格式 (针对自建 CF 节点的深度适配)
+    // 2. SS + v2ray-plugin 转换为 Mihomo 原生传输格式 (针对 LWSS 节点适配)
     if (content.includes('plugin: v2ray-plugin')) {
         let lines = content.includes('\r\n') ? content.split('\r\n') : content.split('\n');
         let result = "";
@@ -208,9 +200,7 @@ function clashFix(content) {
                         const port = portMatch ? portMatch[1] : "";
                         const name = nameMatch ? nameMatch[1].replace(/['"]/g, "") : "SS-Fixed";
 
-                        // 关键修改：
-                        // 1. cipher 改回 none (Mihomo 核心支持)
-                        // 2. 强制加入 client-fingerprint: chrome 模拟浏览器特征
+                        // 将加密改为 none，并强制加入浏览器指纹模拟
                         result += `  - {name: "${name}", server: ${server}, port: ${port}, type: ss, cipher: none, password: ${password}, udp: true, tls: true, sni: ${host}, client-fingerprint: chrome, skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}}} \n`;
                         continue; 
                     }
@@ -221,18 +211,9 @@ function clashFix(content) {
         content = result;
     }
 
-    // 3. Wireguard 修复逻辑
+    // 3. 全局 Wireguard 及参数通用修复
     content = content.replace(/type: wireguard, mtu: 1280, udp: true/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
     
-    return content;
-}
-    // 3. Wireguard 修复
-    content = content.replace(/type: wireguard, mtu: 1280, udp: true/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
-    
-    return content;
-}
-    // 3. Wireguard 修复
-    content = content.replace(/type: wireguard, mtu: 1280, udp: true/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
     return content;
 }
 
@@ -285,7 +266,6 @@ async function getSUB(api, request, 追加UA, userAgentHeader) {
 	api = [...new Set(api)];
 	let newapi = "";
 	let 订阅转换URLs = "";
-	let 异常订阅 = "";
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), 2000);
 	try {
@@ -300,7 +280,7 @@ async function getSUB(api, request, 追加UA, userAgentHeader) {
 			}
 		}
 	} catch (error) {} finally { clearTimeout(timeout); }
-	return [await ADD(newapi + 异常订阅), 订阅转换URLs];
+	return [await ADD(newapi), 订阅转换URLs];
 }
 
 async function getUrl(request, targetUrl, 追加UA, userAgentHeader) {
