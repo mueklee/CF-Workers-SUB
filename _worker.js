@@ -185,10 +185,11 @@ function clashFix(content) {
     // 1. AnyTLS 参数修正
     content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
 
-    // 2. SS + v2ray-plugin 原生转换逻辑
+    // 2. SS + v2ray-plugin 转换为 Mihomo 原生格式 (针对你的自建节点进行终极适配)
     if (content.includes('plugin: v2ray-plugin')) {
         let lines = content.includes('\r\n') ? content.split('\r\n') : content.split('\n');
         let result = "";
+        
         for (let line of lines) {
             if (line.includes('type: ss') && line.includes('v2ray-plugin')) {
                 try {
@@ -198,15 +199,17 @@ function clashFix(content) {
                     const srvMatch = line.match(/server:\s*([^,}\s]+)/);
                     const portMatch = line.match(/port:\s*([^,}\s]+)/);
                     const nameMatch = line.match(/name:\s*([^,}\s]+)/);
+
                     if (hostMatch && pathMatch) {
                         const host = hostMatch[1];
                         const path = pathMatch[1].replace(/\\\\=/g, '=');
                         const password = pwdMatch ? pwdMatch[1] : "";
                         const server = srvMatch ? srvMatch[1] : "";
                         const port = portMatch ? portMatch[1] : "";
-                        const name = nameMatch ? nameMatch[1] : "SS-Fixed";
-                        // 修正：正确的 chacha20-ietf-poly1305
-                        result += `  - {name: "${name}", server: ${server}, port: ${port}, type: ss, cipher: chacha20-ietf-poly1305, password: ${password}, udp: true, tls: true, sni: ${host}, skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}}} \n`;
+                        const name = nameMatch ? nameMatch[1].replace(/['"]/g, "") : "SS-Fixed";
+
+                        // 最终修正：cipher 改回 none 以匹配 V2RayN，加入 client-fingerprint: chrome
+                        result += `  - {name: "${name}", server: ${server}, port: ${port}, type: ss, cipher: none, password: ${password}, udp: true, tls: true, sni: ${host}, client-fingerprint: chrome, skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}}} \n`;
                         continue; 
                     }
                 } catch (e) {}
@@ -215,6 +218,12 @@ function clashFix(content) {
         }
         content = result;
     }
+
+    // 3. Wireguard 修复
+    content = content.replace(/type: wireguard, mtu: 1280, udp: true/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
+    
+    return content;
+}
     // 3. Wireguard 修复
     content = content.replace(/type: wireguard, mtu: 1280, udp: true/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
     return content;
