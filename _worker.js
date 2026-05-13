@@ -301,7 +301,7 @@ async function MD5MD5(text) {
 	return secondHex.toLowerCase();
 }
 
-ffunction clashFix(content) {
+function clashFix(content) {
     // 1. 修正 AnyTLS 指纹名
     content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
 
