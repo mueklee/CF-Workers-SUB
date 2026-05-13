@@ -302,9 +302,52 @@ async function MD5MD5(text) {
 }
 
 function clashFix(content) {
-	// 关键修改：强行将老的 fingerprint 映射为新版核心认可的 client-fingerprint
+	// 1. AnyTLS 修复：将老的 fingerprint 映射为新版核心认可的 client-fingerprint
 	content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
 
+	// 2. SS + v2ray-plugin 原生化修复 (专门解决自建节点不通的问题)
+	if (content.includes('plugin: v2ray-plugin')) {
+		let lines;
+		if (content.includes('\r\n')) {
+			lines = content.split('\r\n');
+		} else {
+			lines = content.split('\n');
+		}
+
+		let result = "";
+		for (let line of lines) {
+			// 如果这行包含 type: ss 和 v2ray-plugin，就对其进行解构重建
+			if (line.includes('type: ss') && line.includes('v2ray-plugin')) {
+				try {
+					const hostMatch = line.match(/host:\s*([^,}\s]+)/);
+					const pathMatch = line.match(/path:\s*"([^"]+)"/);
+					const pwdMatch = line.match(/password:\s*([^,}\s]+)/);
+					const srvMatch = line.match(/server:\s*([^,}\s]+)/);
+					const portMatch = line.match(/port:\s*([^,}\s]+)/);
+					const nameMatch = line.match(/name:\s*([^,}\s]+)/);
+
+					if (hostMatch && pathMatch) {
+						const host = hostMatch[1];
+						const path = pathMatch[1].replace(/\\\\=/g, '='); // 修复双斜杠转义
+						const password = pwdMatch ? pwdMatch[1] : "";
+						const server = srvMatch ? srvMatch[1] : "";
+						const port = portMatch ? portMatch[1] : "";
+						const name = nameMatch ? nameMatch[1].replace(/['"]/g, "") : "SS-Fixed";
+
+						// 重构成 Mihomo 支持的原生 WS 格式：保留 cipher: none，增加 chrome 指纹，去除无效插件
+						result += `  - {name: "${name}", server: ${server}, port: ${port}, type: ss, cipher: none, password: ${password}, udp: true, tls: true, sni: ${host}, client-fingerprint: chrome, skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}}}\n`;
+						continue; // 处理完这一行，直接跳过原有输出
+					}
+				} catch (e) {
+					console.error("SS 解析出错", e);
+				}
+			}
+			result += line + '\n';
+		}
+		content = result;
+	}
+
+	// 3. 原有的 Wireguard 修复逻辑
 	if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
 		let lines;
 		if (content.includes('\r\n')) {
@@ -325,6 +368,7 @@ function clashFix(content) {
 		}
 		content = result;
 	}
+	
 	return content;
 }
 
