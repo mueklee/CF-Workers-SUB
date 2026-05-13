@@ -301,7 +301,7 @@ async function MD5MD5(text) {
 	return secondHex.toLowerCase();
 }
 
-function clashFix(content) {
+ffunction clashFix(content) {
     // 1. 修正 AnyTLS 指纹名
     content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
 
@@ -311,10 +311,8 @@ function clashFix(content) {
         let result = "";
         
         for (let line of lines) {
-            // 只有同时包含 ss 和 v2ray-plugin 的行才处理
             if (line.includes('type: ss') && line.includes('v2ray-plugin')) {
                 try {
-                    // 使用正则提取关键参数，增加容错
                     const hostMatch = line.match(/host:\s*([^,}\s]+)/);
                     const pathMatch = line.match(/path:\s*"([^"]+)"/);
                     const pwdMatch = line.match(/password:\s*([^,}\s]+)/);
@@ -330,13 +328,11 @@ function clashFix(content) {
                         const port = portMatch ? portMatch[1] : "";
                         const name = nameMatch ? nameMatch[1] : "SS-Fixed";
 
-                        // 修正点：将加密算法改为标准兼容的 chacha20-ietf-poly1305
-                        // 即使 CF 后端是 none，客户端写这个算法也能正常初始化
+                        // 核心修正点：务必确保这里是 chacha20-ietf-poly1305
                         result += `  - {name: "${name}", server: ${server}, port: ${port}, type: ss, cipher: chacha20-ietf-poly1305, password: ${password}, udp: true, tls: true, sni: ${host}, skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}}} \n`;
                         continue; 
                     }
                 } catch (e) {
-                    // 如果这行解析报错，保留原样，防止整个脚本崩溃
                     console.error("解析SS节点失败:", e);
                 }
             }
@@ -344,6 +340,14 @@ function clashFix(content) {
         }
         content = result;
     }
+
+    // 3. 原有的 Wireguard 修复逻辑
+    if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
+        content = content.replace(/type: wireguard, mtu: 1280, udp: true/g, 'type: wireguard, mtu: 1280, remote-dns-resolve: true, udp: true');
+    }
+
+    return content;
+}
 
     // 3. 原有的 Wireguard 修复逻辑
     if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
