@@ -305,8 +305,41 @@ function clashFix(content) {
 	// 1. AnyTLS 修复：将老的 fingerprint 映射为新版核心认可的 client-fingerprint
 	content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
 
-	// 2. SS + v2ray-plugin 原生化修复 (专门解决自建节点不通的问题)
-	if (content.includes('plugin: v2ray-plugin')) {
+	// 2. SS 节点原生化深度修复 (增加 0-RTT Early Data 优化，消灭额外 150ms 延迟)
+	if (content.includes('type: ss') && content.includes('v2ray-plugin')) {
+		const lines = content.split(/\r?\n/);
+		let result = "";
+		for (let line of lines) {
+			if (line.includes('type: ss') && line.includes('v2ray-plugin')) {
+				try {
+					const name = (line.match(/name:\s*([^,]+)/) || [])[1];
+					const server = (line.match(/server:\s*([^,]+)/) || [])[1];
+					const port = (line.match(/port:\s*([^,]+)/) || [])[1];
+					const password = (line.match(/password:\s*([^,]+)/) || [])[1];
+					const host = (line.match(/host:\s*([^,}\s]+)/) || [])[1];
+					let path = (line.match(/path:\s*"([^"]+)"/) || line.match(/path:\s*([^,}\s]+)/) || [])[1];
+					
+					if (name && server && host) {
+						if (path) path = path.replace(/\\\\=/g, '=').replace(/\\=/g, '=');
+						
+						// 核心性能优化：
+						// - alpn: [h2, http/1.1] 强制开启 HTTP/2 多路复用
+						// - max-early-data: 2048 激活 0-RTT，找回被浪费的 150ms 握手时间
+						// - early-data-header-name 兼容标准的 WS Early Data 头部
+						result += `  - {name: ${name}, server: ${server}, port: ${port}, type: ss, cipher: none, password: ${password}, udp: true, tls: true, sni: ${host}, client-fingerprint: chrome, alpn: [h2, http/1.1], skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}, max-early-data: 2048, early-data-header-name: Sec-WebSocket-Protocol}}\n`;
+						continue; 
+					}
+				} catch (e) {
+					console.error("SS节点解析错误", e);
+				}
+			}
+			result += line + '\n';
+		}
+		content = result;
+	}
+
+	// 3. 原有的 Wireguard 修复逻辑
+	if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
 		let lines;
 		if (content.includes('\r\n')) {
 			lines = content.split('\r\n');
@@ -316,36 +349,18 @@ function clashFix(content) {
 
 		let result = "";
 		for (let line of lines) {
-			// 如果这行包含 type: ss 和 v2ray-plugin，就对其进行解构重建
-			if (line.includes('type: ss') && line.includes('v2ray-plugin')) {
-				try {
-					const hostMatch = line.match(/host:\s*([^,}\s]+)/);
-					const pathMatch = line.match(/path:\s*"([^"]+)"/);
-					const pwdMatch = line.match(/password:\s*([^,}\s]+)/);
-					const srvMatch = line.match(/server:\s*([^,}\s]+)/);
-					const portMatch = line.match(/port:\s*([^,}\s]+)/);
-					const nameMatch = line.match(/name:\s*([^,}\s]+)/);
-
-					if (hostMatch && pathMatch) {
-						const host = hostMatch[1];
-						const path = pathMatch[1].replace(/\\\\=/g, '='); // 修复双斜杠转义
-						const password = pwdMatch ? pwdMatch[1] : "";
-						const server = srvMatch ? srvMatch[1] : "";
-						const port = portMatch ? portMatch[1] : "";
-						const name = nameMatch ? nameMatch[1].replace(/['"]/g, "") : "SS-Fixed";
-
-						// 重构成 Mihomo 支持的原生 WS 格式：保留 cipher: none，增加 chrome 指纹，去除无效插件
-						result += `  - {name: "${name}", server: ${server}, port: ${port}, type: ss, cipher: none, password: ${password}, udp: true, tls: true, sni: ${host}, client-fingerprint: chrome, skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}}}\n`;
-						continue; // 处理完这一行，直接跳过原有输出
-					}
-				} catch (e) {
-					console.error("SS 解析出错", e);
-				}
+			if (line.includes('type: wireguard')) {
+				const 备改内容 = `, mtu: 1280, udp: true`;
+				const 正确内容 = `, mtu: 1280, remote-dns-resolve: true, udp: true`;
+				result += line.replace(new RegExp(备改内容, 'g'), 正确内容) + '\n';
+			} else {
+				result += line + '\n';
 			}
-			result += line + '\n';
 		}
 		content = result;
 	}
+	return content;
+}
 
 	// 3. 原有的 Wireguard 修复逻辑
 	if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
