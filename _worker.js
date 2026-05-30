@@ -302,10 +302,10 @@ async function MD5MD5(text) {
 }
 
 function clashFix(content) {
-	// 1. AnyTLS 修复：将老的 fingerprint 映射为新版核心认可的 client-fingerprint
+	// 1. AnyTLS 修复
 	content = content.replace(/fingerprint: (chrome|firefox|safari|ios|android|edge|360|qq|random)/g, 'client-fingerprint: $1');
 
-	// 2. SS 节点原生化深度修复 (增加 0-RTT Early Data 优化，消灭额外 150ms 延迟)
+	// 2. SS 节点原生化深度修复 (增加 0-RTT Early Data 优化)
 	if (content.includes('type: ss') && content.includes('v2ray-plugin')) {
 		const lines = content.split(/\r?\n/);
 		let result = "";
@@ -321,11 +321,6 @@ function clashFix(content) {
 					
 					if (name && server && host) {
 						if (path) path = path.replace(/\\\\=/g, '=').replace(/\\=/g, '=');
-						
-						// 核心性能优化：
-						// - alpn: [h2, http/1.1] 强制开启 HTTP/2 多路复用
-						// - max-early-data: 2048 激活 0-RTT，找回被浪费的 150ms 握手时间
-						// - early-data-header-name 兼容标准的 WS Early Data 头部
 						result += `  - {name: ${name}, server: ${server}, port: ${port}, type: ss, cipher: none, password: ${password}, udp: true, tls: true, sni: ${host}, client-fingerprint: chrome, alpn: [h2, http/1.1], skip-cert-verify: true, network: ws, ws-opts: {path: "${path}", headers: {Host: ${host}}, max-early-data: 2048, early-data-header-name: Sec-WebSocket-Protocol}}\n`;
 						continue; 
 					}
@@ -338,6 +333,53 @@ function clashFix(content) {
 		content = result;
 	}
 
+	// 3. 原有的 Wireguard 修复逻辑
+	if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
+		let lines;
+		if (content.includes('\r\n')) {
+			lines = content.split('\r\n');
+		} else {
+			lines = content.split('\n');
+		}
+
+		let result = "";
+		for (let line of lines) {
+			if (line.includes('type: wireguard')) {
+				const 备改内容 = `, mtu: 1280, udp: true`;
+				const 正确内容 = `, mtu: 1280, remote-dns-resolve: true, udp: true`;
+				result += line.replace(new RegExp(备改内容, 'g'), 正确内容) + '\n';
+			} else {
+				result += line + '\n';
+			}
+		}
+		content = result;
+	}
+
+	// 4. Hysteria2 节点深度修复 (专门解决密码编码与端口跳跃问题)
+	if (content.includes('type: hysteria2')) {
+		const lines = content.split(/\r?\n/);
+		let result = "";
+		for (let line of lines) {
+			if (line.includes('type: hysteria2')) {
+				// 修复A：有些转换器错把 obfs-password 写成 obfs-param
+				line = line.replace(/obfs-param:/g, 'obfs-password:');
+				
+				// 修复B：将 mport 纠正为 Mihomo 核心支持的 ports
+				line = line.replace(/mport:/g, 'ports:');
+				
+				// 修复C：核心解毒！将密码中的 %3D%3D 等 URL 编码还原为正常字符，并强制加上双引号
+				line = line.replace(/obfs-password:\s*([^,}\s]+)/, (match, p1) => {
+					let cleanPwd = p1.replace(/['"]/g, ""); // 先扒掉原有的引号
+					return `obfs-password: "${decodeURIComponent(cleanPwd)}"`; 
+				});
+			}
+			result += line + '\n';
+		}
+		content = result;
+	}
+
+	return content;
+}
 	// 3. 原有的 Wireguard 修复逻辑
 	if (content.includes('wireguard') && !content.includes('remote-dns-resolve')) {
 		let lines;
